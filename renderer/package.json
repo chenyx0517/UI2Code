@@ -1,0 +1,23 @@
+{
+    "name": "jsx-renderer",
+    "version": "1.0.0",
+    "description": "Renders JSX code to a screenshot",
+    "main": "render_jsx.js",
+    "scripts": {
+        "start": "node render_jsx.js"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "dependencies": {
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "puppeteer": "^22.10.0",
+        "sass": "^1.77.8"
+    },
+    "devDependencies": {
+        "@babel/core": "^7.24.7",
+        "@babel/preset-react": "^7.24.7",
+        "@babel/standalone": "^7.24.7"
+    }
+}

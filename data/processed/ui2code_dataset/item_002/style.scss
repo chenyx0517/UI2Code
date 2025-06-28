@@ -1,0 +1,275 @@
+@import "@/styles/global.mixin";
+
+.taskPage {
+	padding-top: 1dx;
+
+	@include bg(
+		"https://assets.papegames.com/resources/cdn/20250117/ac9d8023052594e1.jpg",
+		780dx,
+		2730dx,
+		cover
+	);
+
+	.taskHeader {
+		display: flex;
+		justify-content: space-between;
+		z-index: 2;
+
+		.task-music-btn {
+			margin-right: 36dx;
+			margin-top: 26dx;
+		}
+
+		.icon-back {
+			margin-top: 24dx;
+			margin-left: 30dx;
+		}
+	}
+
+	.milestone {
+		position: absolute;
+		top: 404dx;
+		width: 100%;
+
+		.milestoneMain {
+			position: absolute;
+
+			.milestoneItem {
+				position: absolute;
+
+				@include setbg;
+
+				.milestoneScore {
+					@include flex-center;
+
+					position: absolute;
+					width: 60dx;
+					height: 59dx;
+					border-radius: 50%;
+					background: #e77238;
+					flex-direction: column;
+					color: #fff;
+					font-size: 18dx;
+					font-family: "FZYASHS_ZHONG";
+					z-index: 3;
+					right: 10dx;
+					top: 10dx;
+
+					.currentScore {
+						color: #fff192;
+					}
+				}
+
+				.milestoneGet {
+					position: absolute;
+
+					@include setbg;
+
+					width: 100%;
+					height: 100%;
+					z-index: 2;
+				}
+			}
+
+			.milestoneItem1 {
+				left: 37dx;
+				top: 0;
+				width: 226dx;
+				height: 208dx;
+			}
+
+			.milestoneItem2 {
+				left: 265dx;
+				top: 67dx;
+				width: 256dx;
+				height: 235dx;
+
+				.milestoneScore {
+					width: 66dx;
+					height: 65dx;
+				}
+			}
+
+			.milestoneItem3 {
+				left: 525dx;
+				top: 104dx;
+				width: 233dx;
+				height: 214dx;
+			}
+
+			.milestoneItem4 {
+				left: 30dx;
+				top: 286dx;
+				width: 236dx;
+				height: 217dx;
+			}
+
+			.milestoneItem5 {
+				left: 260dx;
+				top: 356dx;
+				width: 240dx;
+				height: 222dx;
+
+				.milestoneScore {
+					width: 66dx;
+					height: 65dx;
+				}
+			}
+
+			.milestoneItem6 {
+				left: 515dx;
+				top: 371dx;
+				width: 233dx;
+				height: 214dx;
+			}
+		}
+
+		.milestoneAmount {
+			position: absolute;
+			top: 620dx;
+			left: 50%;
+			transform: translateX(-50%);
+			font-family: "FZYASHS_ZHONG";
+			color: #cc552e;
+			font-size: 25dx;
+			width: 395dx;
+			height: 67dx;
+
+			@include flex-center;
+
+			img {
+				position: absolute;
+				width: 100%;
+			}
+
+			span {
+				z-index: 2;
+			}
+		}
+	}
+
+	.task {
+		position: absolute;
+		top: 1530dx;
+		left: 50%;
+		transform: translateX(-50%);
+
+		.taskTitle {
+			text-align: center;
+		}
+
+		.taskList {
+			margin-top: 60dx;
+
+			.taskItem {
+				width: 756dx;
+				height: 132dx;
+				margin: 20dx auto;
+				display: flex;
+				justify-content: space-between;
+
+				@include setbg;
+
+				.taskItemLeft {
+					position: relative;
+					width: 600dx;
+					height: 100%;
+					display: flex;
+					justify-content: center;
+					margin-left: 70dx;
+					flex-direction: column;
+
+					.taskItemTitle {
+						font-size: 27dx;
+						color: #8c5a46;
+						font-family: "FZYASHS_CU";
+					}
+
+					.taskItemTip {
+						color: #f4a581;
+						font-size: 14dx;
+						margin-top: 6dx;
+						font-family: FZYASHS;
+
+						:last-child {
+							margin-top: 4dx;
+						}
+					}
+				}
+
+				.inviteTitle {
+					margin-top: 6dx;
+				}
+
+				.taskItemRight {
+					position: relative;
+
+					@include flex-center;
+
+					flex-direction: column;
+					width: 186dx;
+
+					.taskItemBtnText {
+						@include setbg;
+
+						width: 106dx;
+						height: 49dx;
+					}
+
+					.taskItemBtnTip {
+						font-size: 12dx;
+						color: #c58635;
+						margin-top: 6dx;
+						font-family: "FZYASHS_CU";
+					}
+				}
+
+				.taskItemBtnDesc {
+					// 图片
+					font-size: 20dx;
+				}
+			}
+
+			.taskItemFinished {
+				.taskItemLeft {
+					.taskItemTitle {
+						color: #b98f7e;
+					}
+
+					.taskItemTip {
+						color: #956754;
+					}
+				}
+			}
+		}
+	}
+
+	.taskPageBtm {
+		position: absolute;
+		top: 2360dx;
+		width: 100%;
+
+		@include flex-center;
+
+		flex-direction: column;
+
+		.fireBtn {
+			width: 366dx;
+			height: 125dx;
+		}
+
+		.taskPageBtmTip {
+			color: #a95c39;
+			font-size: 20dx;
+		}
+	}
+
+	.fixed-bottom-arrow {
+		width: 200dx;
+		height: 200dx;
+		position: fixed;
+		bottom: 0dx;
+		left: 50%;
+		transform: translateX(-50%);
+	}
+}
