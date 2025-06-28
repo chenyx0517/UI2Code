@@ -1,0 +1,10 @@
+{
+    "timestamp": "2025-06-28T15:06:09.374682",
+    "item_id": "item_001",
+    "model_used": "gpt-4o",
+    "input_screenshot_path": "data/processed/ui2code_dataset/item_001/screenshot.png",
+    "input_image_assets_info": "- back.png\n- bg.jpg\n- login.png\n- logo.png\n- logout.png\n- rule.png",
+    "system_prompt_used": "你是一个专业的前端工程师。主要开发游戏h5活动，精通 React 和 Scss\n你的任务是根据用户提供的页面截图，生成高质量、语义化且符合最佳实践的 React (JSX) 组件代码和scss代码。\n请确保生成的代码：\n1. 仅包含 React (JSX) 和 scss，不包含任何额外的解释或文本。\n2. 完整、可运行，所有标签都正确闭合。\n3. 如果图片中包含图标或图片资源，使用backgroundImage属性，路径假设为 `../assets/` 目录下的相应文件名。如果图片内容不明确，可以使用通用名称如 `image.png`。\n4. 布局、颜色、字体和组件间距应尽可能精确地复刻截图。\n5. 如果存在交互元素（如按钮、输入框），请为其添加基本的 HTML 属性（如 `type`, `placeholder`），但无需添加事件处理函数或状态管理逻辑。",
+    "user_prompt_content_sent": "请根据以下页面截图，生成对应的 React (JSX) 和 scss 代码：\n\n\n\n元素的定位均采用绝对定位\n要注意机型的适配和兼容性的处理\n所有px替换成dx\n页面中可能使用的图片资源（位于 `../assets/` 目录下）：\n- back.png\n- bg.jpg\n- login.png\n- logo.png\n- logout.png\n- rule.png",
+    "generated_code_filepath": "item_001/generated_code.jsx"
+}
