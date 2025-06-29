@@ -1,4 +1,6 @@
 import os
+from pathlib import Path
+import shutil
 from dotenv import load_dotenv
 from openai import OpenAI
 import base64
@@ -9,6 +11,7 @@ from PIL import Image # 新增：用于图像处理
 from skimage.metrics import structural_similarity as ssim # 新增：用于 SSIM 计算
 import numpy as np # 新增：用于图像处理
 import difflib # 新增：用于代码相似度计算
+import re
 load_dotenv()
 
 # --- Prompt 文件路径和加载函数 (这部分保持不变) ---
@@ -47,18 +50,52 @@ def encode_image(image_path: str) -> str:
     with open(image_path, "rb") as image_file:
         return base64.b64encode(image_file.read()).decode("utf-8")
     
-# --- 新增函数：渲染 JSX 代码为图片 ---
-def render_jsx_to_screenshot(jsx_code: str, output_path: str) -> bool:
+
+
+# --- 新增函数：解析模型输出，提取 JSX 和 SCSS ---
+def parse_model_output(output_text: str) -> tuple[str, str]:
     """
-    使用 Node.js 脚本渲染 JSX 代码为图片。
-    Args:
-        jsx_code (str): 需要渲染的 JSX 代码字符串。
-        output_path (str): 截图保存的路径。
-    Returns:
-        bool: 渲染是否成功。
+    从模型的输出中解析并提取 JSX 代码和 SCSS 代码。
+    假设 JSX 和 SCSS 分别被 ```jsx 和 ```scss 包裹。
+    """
+    jsx_match = re.search(r'```jsx\n(.*?)\n```', output_text, re.DOTALL)
+    scss_match = re.search(r'```scss\n(.*?)\n```', output_text, re.DOTALL)
+
+    jsx_code = jsx_match.group(1).strip() if jsx_match else ""
+    scss_code = scss_match.group(1).strip() if scss_match else ""
+
+    if not jsx_code:
+        print("⚠️ 警告：模型输出中未找到有效的 JSX 代码块。")
+    if not scss_code:
+        print("⚠️ 警告：模型输出中未找到有效的 SCSS 代码块。")
+        
+    return jsx_code, scss_code
+
+
+def base64_encode_image(image_path):
+    """
+    将图片文件编码为 Base64 字符串。
+    """
+    try:
+        with open(image_path, "rb") as image_file:
+            encoded_string = base64.b64encode(image_file.read()).decode('ascii')
+        return encoded_string
+    except FileNotFoundError:
+        print(f"❌ 错误：图片文件未找到，无法进行 Base64 编码：{image_path}")
+        return None
+    except Exception as e:
+        print(f"❌ Base64 编码过程中发生错误：{e}")
+        return None
+
+
+
+
+# --- 渲染 JSX 代码为图片 (新增 SCSS 参数) ---
+def render_jsx_to_screenshot(jsx_code: str, scss_code: str, output_path: str) -> bool:
+    """
+    使用 Node.js 脚本渲染 JSX 代码为图片，并应用 SCSS 样式。
     """
     # 假设 renderer 目录在项目根目录下，与 src 目录同级
-    # current_script_dir 是 src 目录的路径
     renderer_script_path = os.path.join(os.path.dirname(current_script_dir), 'renderer', 'render_jsx.js')
     
     if not os.path.exists(renderer_script_path):
@@ -66,17 +103,17 @@ def render_jsx_to_screenshot(jsx_code: str, output_path: str) -> bool:
         return False
 
     jsx_code_base64 = base64.b64encode(jsx_code.encode('utf-8')).decode('utf-8')
+    scss_code_base64 = base64.b64encode(scss_code.encode('utf-8')).decode('utf-8')
 
     try:
-        # 调用 Node.js 脚本，传递输出路径和 Base64 编码的 JSX 代码
+        # 调用 Node.js 脚本，传递输出路径、Base64 编码的 JSX 和 SCSS 代码
         result = subprocess.run(
-            ['node', renderer_script_path, output_path, jsx_code_base64],
-            capture_output=True, # 捕获 stdout 和 stderr
-            text=True, # 以文本模式捕获输出
-            check=True # 如果命令返回非零退出码，则抛出 CalledProcessError
+            ['node', renderer_script_path, output_path, jsx_code_base64, scss_code_base64],
+            capture_output=True,
+            text=True,
+            encoding='utf-8', # <-- 新增：明确指定编码为 UTF-8
+            check=True
         )
-        print("Node.js stdout:", result.stdout) # 调试时可以打开
-        print("Node.js stderr:", result.stderr) # 调试时可以打开
         return True
     except subprocess.CalledProcessError as e:
         print(f"❌ 渲染 JSX 出错 (Node.js 退出码: {e.returncode}): {e.stderr}")
@@ -87,7 +124,7 @@ def render_jsx_to_screenshot(jsx_code: str, output_path: str) -> bool:
     except Exception as e:
         print(f"❌ 渲染 JSX 时发生意外错误: {e}")
         return False
-    
+  
 # --- 新增函数：计算图像相似度 (SSIM) ---
 def calculate_image_ssim(img1_path: str, img2_path: str) -> float:
     """
@@ -117,7 +154,7 @@ def calculate_image_ssim(img1_path: str, img2_path: str) -> float:
         print(f"❌ 计算 SSIM 时出错：{e}")
         return 0.0
 
-# --- 新增函数：计算代码相似度 (简单的行相似度) ---
+# --- 计算代码相似度 (简单的行相似度) ---
 def calculate_code_similarity(code1: str, code2: str) -> float:
     """
     计算两段代码的简单行相似度（基于 difflib 的 SequenceMatcher）。
@@ -163,18 +200,19 @@ def get_image_assets_list(screenshot_path: str) -> str:
     # 格式化为列表字符串，例如："- logo.png\n- icon_user.png"
     return "\n".join([f"- {f}" for f in sorted(image_files)])
 
-# --- 保存结果的函数 ---
+# --- 保存结果的函数 (参数已更新以接受 JSX 和 SCSS 分别传入) ---
 def save_generated_result(
     output_dir: str,
     item_id: str,
-    generated_code: str,
+    generated_jsx_code: str, # 参数名更新为 generated_jsx_code
+    generated_scss_code: str, # 新增：保存生成的 SCSS 代码
     screenshot_path: str, # 原始截图路径
     generated_screenshot_path: str, # 生成代码渲染的截图路径
     image_assets_info: str,
     model_name: str,
     system_prompt_content: str,
     user_prompt_content: str,
-    metrics: dict # 新增：要保存的指标
+    metrics: dict 
 ):
     """
     保存模型生成的代码和相关元数据。
@@ -182,12 +220,16 @@ def save_generated_result(
     item_output_dir = os.path.join(output_dir, item_id)
     os.makedirs(item_output_dir, exist_ok=True) # 确保目录存在
 
-    # 保存生成的代码
-    code_filepath = os.path.join(item_output_dir, 'generated_code.jsx')
-    with open(code_filepath, 'w', encoding='utf-8') as f:
-        f.write(generated_code)
-    # print(f"✅ 生成代码已保存到: {code_filepath}") # 批量处理时减少输出
-
+    # 保存生成的 JSX 代码
+    jsx_filepath = os.path.join(item_output_dir, 'generated_code.jsx')
+    with open(jsx_filepath, 'w', encoding='utf-8') as f:
+        f.write(generated_jsx_code)
+    
+    # 保存生成的 SCSS 代码
+    scss_filepath = os.path.join(item_output_dir, 'generated_style.scss') # 保存到新的文件
+    with open(scss_filepath, 'w', encoding='utf-8') as f:
+        f.write(generated_scss_code)
+    
     # 保存输入截图的路径
     screenshot_path_filepath = os.path.join(item_output_dir, 'input_screenshot_path.txt')
     with open(screenshot_path_filepath, 'w', encoding='utf-8') as f:
@@ -208,20 +250,19 @@ def save_generated_result(
         "input_image_assets_info": image_assets_info,
         "system_prompt_used": system_prompt_content,
         "user_prompt_content_sent": user_prompt_content, # 实际发送给模型的用户prompt
-        "generated_code_filepath": os.path.relpath(code_filepath, output_dir), # 相对路径
+        "generated_jsx_filepath": os.path.relpath(jsx_filepath, output_dir), # 相对路径
+        "generated_scss_filepath": os.path.relpath(scss_filepath, output_dir), # 新增 SCSS 路径
         "metrics": metrics # 将指标添加到元数据中
     }
     metadata_filepath = os.path.join(item_output_dir, 'metadata.json')
     with open(metadata_filepath, 'w', encoding='utf-8') as f:
         json.dump(metadata, f, indent=4, ensure_ascii=False)
-    # print(f"✅ 元数据和指标已保存到: {metadata_filepath}") # 批量处理时减少输出
-
 
 
 # --- 生成代码的核心函数 (修改以包含保存和计算指标逻辑) ---
 def generate_code_from_screenshot(screenshot_path: str, output_base_dir: str, model: str = "gpt-4o") -> dict:
     """
-    根据页面截图生成 React + Tailwind CSS 代码，并计算相关指标。
+    根据页面截图生成 React + SCSS 代码，并计算相关指标。
     返回包含生成结果和指标的字典。
     """
     if not os.path.exists(screenshot_path):
@@ -229,28 +270,30 @@ def generate_code_from_screenshot(screenshot_path: str, output_base_dir: str, mo
 
     base64_image = encode_image(screenshot_path)
     image_assets_info = get_image_assets_list(screenshot_path)
-    f = open(USER_PROMPT_TEMPLATE_FILE)
+
+    f = open(USER_PROMPT_TEMPLATE_FILE,'r', encoding='utf-8')
     final_user_prompt_content = f.read()
     final_user_prompt_content = final_user_prompt_content.format(image_assets_list=image_assets_info)
+
     item_id = os.path.basename(os.path.dirname(screenshot_path))
     if not item_id.startswith("item_"):
         print(f"⚠️ 警告：无法从路径 {screenshot_path} 提取有效的 item_id。将使用 'unknown_item'。")
         item_id = "unknown_item"
 
-    generated_code = ""
+    generated_jsx_code = ""
+    generated_scss_code = ""
     status_message = "成功"
     metrics = {
         "code_similarity_score": 0.0,
         "visual_similarity_ssim_score": 0.0,
-        "generation_success": False,
-        "rendering_success": False,
-        "error_details": "" # 新增错误详情字段
+        "generation_success": False, # 指代码生成是否成功 (LLM响应)
+        "rendering_success": False,  # 指渲染是否成功 (Node.js)
+        "error_details": ""
     }
     generated_screenshot_path = "" # 初始化，可能不会生成
 
     try:
-        # 调用大模型生成代码
-        print(final_user_prompt_content)
+        # 调用大模型生成代码和样式
         response = client.chat.completions.create(
             model=model,
             messages=[
@@ -269,28 +312,42 @@ def generate_code_from_screenshot(screenshot_path: str, output_base_dir: str, mo
                     ]
                 }
             ],
-            temperature=0.4,
+            temperature=0.7,
             max_tokens=4000
         )
-        generated_code = response.choices[0].message.content.strip()
-        metrics["generation_success"] = True
+        full_model_output = response.choices[0].message.content.strip()
+       
+        # 解析模型输出，提取 JSX 和 SCSS
+        generated_jsx_code, generated_scss_code = parse_model_output(full_model_output)
+        
+        # 如果成功提取到JSX，则认为生成成功
+        if generated_jsx_code:
+            metrics["generation_success"] = True
+        else:
+            metrics["error_details"] += "No valid JSX generated or parsed. "
+            status_message = "JSX生成或解析失败"
 
         # --- 获取真实代码 (Ground Truth) ---
         original_jsx_path = os.path.join(os.path.dirname(screenshot_path), 'index.jsx')
+        # original_scss_path = os.path.join(os.path.dirname(screenshot_path), 'Activity.scss') # 假设真实SCSS名为 Activity.scss
+        
         original_jsx_code = ""
+        # original_scss_code = "" # 如果需要计算SCSS相似度，需要读取
+
         if os.path.exists(original_jsx_path):
-            with open(original_jsx_path, 'r', encoding='utf-8') as f:
+            with open(original_jsx_path, 'r', encoding='utf-8') as f: # 确保读取原始JSX也用UTF-8
                 original_jsx_code = f.read().strip()
-            metrics["code_similarity_score"] = calculate_code_similarity(generated_code, original_jsx_code)
+            metrics["code_similarity_score"] = calculate_code_similarity(generated_jsx_code, original_jsx_code)
         else:
             print(f"⚠️ 警告：未找到原始 JSX 代码：{original_jsx_path}。无法计算代码相似度。")
             metrics["error_details"] += "Original JSX not found. "
 
         # --- 渲染生成的代码并计算视觉相似度 ---
         generated_screenshot_path = os.path.join(output_base_dir, item_id, 'rendered_screenshot.png')
-        os.makedirs(os.path.dirname(generated_screenshot_path), exist_ok=True) # 确保渲染截图的目录存在
+        os.makedirs(os.path.dirname(generated_screenshot_path), exist_ok=True)
 
-        if render_jsx_to_screenshot(generated_code, generated_screenshot_path):
+        # 调用渲染函数，传入 JSX 和 SCSS
+        if generated_jsx_code and render_jsx_to_screenshot(generated_jsx_code, generated_scss_code, generated_screenshot_path):
             metrics["rendering_success"] = True
             metrics["visual_similarity_ssim_score"] = calculate_image_ssim(screenshot_path, generated_screenshot_path)
         else:
@@ -302,36 +359,38 @@ def generate_code_from_screenshot(screenshot_path: str, output_base_dir: str, mo
         save_generated_result(
             output_dir=output_base_dir,
             item_id=item_id,
-            generated_code=generated_code,
+            generated_jsx_code=generated_jsx_code, # 传入分离的 JSX
+            generated_scss_code=generated_scss_code, # 传入分离的 SCSS
             screenshot_path=screenshot_path,
-            generated_screenshot_path=generated_screenshot_path, # 保存渲染后的图片路径
+            generated_screenshot_path=generated_screenshot_path,
             image_assets_info=image_assets_info,
             model_name=model,
             system_prompt_content=SYSTEM_PROMPT,
             user_prompt_content=final_user_prompt_content,
-            metrics=metrics # 传入计算好的指标
+            metrics=metrics
         )
         
         return {"status": "success", "message": "生成和评估成功", "metrics": metrics, "item_id": item_id}
 
     except Exception as e:
         metrics["generation_success"] = False
-        metrics["error_details"] += f"Generation failed: {e}. "
-        status_message = f"生成失败: {e}"
+        metrics["error_details"] += f"An unexpected error occurred during generation or evaluation: {e}. "
+        status_message = f"总错误: {e}"
         print(f"❌ 处理 {item_id} 时出错了：{e}")
         
         # 即使失败也尝试保存（可能会保存部分代码或仅错误信息）
         save_generated_result(
             output_dir=output_base_dir,
             item_id=item_id,
-            generated_code=generated_code, # 即使失败，也保存已获取到的部分代码
+            generated_jsx_code=generated_jsx_code, # 即使失败，也保存已获取到的部分代码
+            generated_scss_code=generated_scss_code, # 尝试保存已获取到的 SCSS
             screenshot_path=screenshot_path,
-            generated_screenshot_path=generated_screenshot_path, # 如果渲染失败，这里会是空字符串
+            generated_screenshot_path=generated_screenshot_path, # 如果渲染失败，这里可能为空
             image_assets_info=image_assets_info,
             model_name=model,
             system_prompt_content=SYSTEM_PROMPT,
             user_prompt_content=final_user_prompt_content,
-            metrics=metrics # 传入计算好的指标
+            metrics=metrics
         )
         return {"status": "error", "message": status_message, "metrics": metrics, "item_id": item_id}
 
