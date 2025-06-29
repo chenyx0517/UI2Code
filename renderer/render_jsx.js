@@ -7,14 +7,15 @@ const sass = require('sass'); // 引入 sass 库
 // 命令行参数顺序：<output_path_for_screenshot> <jsx_code_base64> <scss_code_base64>
 const outputPath = process.argv[2]; // 截图的最终保存路径
 const jsxCodeBase64 = process.argv[3];
-const scssCodeBase64 = process.argv[4];
+const scssCodeBase64 = process.argv[4]; // 这里的变量名是 scssCodeBase64
 
 // 解析输出文件路径，用于保存调试 HTML
 const outputDir = path.dirname(outputPath);
 const itemBaseName = path.basename(outputPath, '.png'); // 通常是 rendered_screenshot
 
 const jsxCode = Buffer.from(jsxCodeBase64, 'base64').toString('utf8');
-const scssCode = sccsCodeBase64 ? Buffer.from(scssCodeBase64, 'base64').toString('utf8') : '';
+// FIXED AGAIN: 确保 scssCodeBase64 的拼写是正确的
+const scssCode = scssCodeBase64 ? Buffer.from(scssCodeBase64, 'base64').toString('utf8') : '';
 
 async function renderAndScreenshot() {
     let browser;
@@ -22,7 +23,7 @@ async function renderAndScreenshot() {
         // --- 核心：手动指定 Chromium 可执行路径 ---
         // 请替换为您的 chrome.exe 实际路径！
         // 例如: 'D:/study/UI2Code/browsers/chrome-win64/chrome.exe'
-        const CHROME_EXECUTABLE_PATH = 'D:/study/UI2Code/browsers/chrome-win64/chrome.exe'; // <-- 请在这里粘贴您在文件资源管理器中得到的精确路径！
+        const CHROME_EXECUTABLE_PATH = 'D:\\study\\chrome-win64\\chrome.exe'; // <-- 请在这里粘贴您在文件资源管理器中得到的精确路径！
         
         // 在启动 puppeteer 之前，先检查文件是否存在，如果不存在就报错并退出
         if (!fs.existsSync(CHROME_EXECUTABLE_PATH)) {
