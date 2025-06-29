@@ -1,166 +1,230 @@
-const puppeteer = require('puppeteer');
+// Playwright 替代 Puppeteer
+const { chromium } = require('playwright'); // 引入 chromium 浏览器，您也可以选择 firefox 或 webkit
 const fs = require('fs');
 const path = require('path');
 const Babel = require('@babel/standalone');
 const sass = require('sass'); // 引入 sass 库
+const http = require('http'); // 新增：引入 Node.js 的 'http' 模块
+const url = require('url');   // 新增：引入 Node.js 的 'url' 模块用于路径解析
 
 // 命令行参数顺序：<output_path_for_screenshot> <jsx_code_base64> <scss_code_base64>
 const outputPath = process.argv[2]; // 截图的最终保存路径
 const jsxCodeBase64 = process.argv[3];
-const scssCodeBase64 = process.argv[4]; // 这里的变量名是 scssCodeBase64
+const scssCodeBase64 = process.argv[4];
 
-// 解析输出文件路径，用于保存调试 HTML
+// 解析输出文件路径，用于保存调试 HTML 和日志
 const outputDir = path.dirname(outputPath);
 const itemBaseName = path.basename(outputPath, '.png'); // 通常是 rendered_screenshot
 
+const browserLogFilePath = path.join(outputDir, `${itemBaseName}_browser_log.txt`);
+const errorLogFilePath = path.join(outputDir, `${itemBaseName}_error_log.txt`); // 专门的错误日志文件
+
+// 创建一个写入流，用于捕获所有浏览器控制台和页面错误日志
+const browserLogStream = fs.createWriteStream(browserLogFilePath, { flags: 'w' });
+
+// 立即记录日志，确保即使在极早期的崩溃也能捕获
+function logToBoth(message, isError = false) {
+    const timestamp = new Date().toISOString();
+    const formattedMessage = `[${timestamp}] ${message}`;
+    if (isError) {
+        console.error(formattedMessage);
+    } else {
+        console.log(formattedMessage); // <--- 修复：将 formattedFormattedMessage 改为 formattedMessage
+    }
+    browserLogStream.write(formattedMessage + '\n');
+    if (isError) {
+        fs.appendFileSync(errorLogFilePath, formattedMessage + '\n', 'utf8'); // 错误也写入专门的错误文件
+    }
+}
+
+// 辅助函数：用于本地 HTTP 服务器提供静态文件
+function serveStaticFile(filePath, res, logFn) {
+    fs.readFile(filePath, (err, data) => {
+        if (err) {
+            logFn(`Server Error (readFile): ${err.message} for ${filePath}`, true);
+            res.writeHead(404, { 'Content-Type': 'text/plain' });
+            res.end('404 Not Found');
+            return;
+        }
+        const ext = path.extname(filePath).toLowerCase();
+        // 简化的 MIME 类型映射，可根据需要扩展
+        const contentType = {
+            '.html': 'text/html',
+            '.css': 'text/css',
+            '.js': 'application/javascript',
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.gif': 'image/gif',
+            '.svg': 'image/svg+xml',
+            '.json': 'application/json'
+        }[ext] || 'application/octet-stream'; // 默认为二进制流
+        
+        res.writeHead(200, { 'Content-Type': contentType });
+        res.end(data);
+    });
+}
+
+
+logToBoth(`🚀 Playwright 渲染脚本开始执行。浏览器日志将写入: ${browserLogFilePath}`);
+
 const jsxCode = Buffer.from(jsxCodeBase64, 'base64').toString('utf8');
-// FIXED AGAIN: 确保 scssCodeBase64 的拼写是正确的
 const scssCode = scssCodeBase64 ? Buffer.from(scssCodeBase64, 'base64').toString('utf8') : '';
 
 async function renderAndScreenshot() {
     let browser;
+    let server; // 声明服务器变量
     try {
-        // --- 核心：手动指定 Chromium 可执行路径 ---
-        // 请替换为您的 chrome.exe 实际路径！
-        // 例如: 'D:/study/UI2Code/browsers/chrome-win64/chrome.exe'
-        const CHROME_EXECUTABLE_PATH = 'D:\\study\\chrome-win64\\chrome.exe'; // <-- 请在这里粘贴您在文件资源管理器中得到的精确路径！
-        
-        // 在启动 puppeteer 之前，先检查文件是否存在，如果不存在就报错并退出
-        if (!fs.existsSync(CHROME_EXECUTABLE_PATH)) {
-            console.error(`❌ Error: Chrome executable not found. Please check path: ${CHROME_EXECUTABLE_PATH}`);
-            // Save error screenshot to display clear error message
-            await (async () => {
-                let tempBrowser;
-                try {
-                    tempBrowser = await puppeteer.launch({headless: true});
-                    const tempPage = await tempBrowser.newPage();
-                    await tempPage.setContent(`<div style="color: red; padding: 20px;">ERROR: Chrome executable not found at:<br>${CHROME_EXECUTABLE_PATH}</div>`);
-                    await tempPage.screenshot({path: outputPath});
-                } catch (tempLaunchError) {
-                    console.error('❌ Could not launch temporary browser for error screenshot:', tempLaunchError.message);
-                } finally {
-                    if (tempBrowser) await tempBrowser.close();
-                }
-            })();
-            // Write error log file
-            fs.writeFileSync(path.join(outputDir, `${itemBaseName}_error_log.txt`), `Error: Chrome executable not found at ${CHROME_EXECUTABLE_PATH}`, 'utf8');
-            return;
-        }
-
-        browser = await puppeteer.launch({
-            headless: true, // Run in headless mode (browser runs in background)
-            executablePath: CHROME_EXECUTABLE_PATH, // <-- Force use of manually specified path
-            ignoreDefaultArgs: ['--disable-extensions'], // Ignore some default arguments to avoid conflicts
+        // Playwright 不需要手动指定 executablePath，它会管理下载的浏览器
+        logToBoth(`尝试启动 Playwright 浏览器 (Chromium, headless: false)...`);
+        browser = await chromium.launch({ 
+            headless: false, // 保持为 false，以便您看到浏览器窗口进行调试
             args: [
-                '--no-sandbox',             // Disable sandboxing, necessary for some environments
-                '--disable-setuid-sandbox', // Disable setuid sandbox
-                '--disable-gpu',            // Disable GPU hardware acceleration to avoid compatibility issues
-                '--disable-dev-shm-usage',  // Disable /dev/shm usage to avoid out of memory issues
-                '--no-zygote',              // Avoid issues on some Linux systems
-                '--single-process',         // Use single process mode to reduce resource consumption, potentially more stable
-                '--disable-web-security',   // Disable web security, may be needed for local files or cross-origin content
-                '--allow-insecure-localhost' // Allow insecure localhost connections
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-gpu',
+                '--disable-dev-shm-usage',
+                '--disable-web-security', // 禁用 Web 安全，对于本地文件非常重要
+                '--allow-insecure-localhost',
+                '--ignore-certificate-errors',
             ]
         });
+        logToBoth(`✅ Playwright 浏览器已成功启动。`);
+        
         const page = await browser.newPage();
-        await page.setViewport({ width: 1280, height: 800 });
+        await page.setViewportSize({ width: 780, height: 1760 });
+        logToBoth(`✅ 已创建新页面并设置视口。`);
 
-        // Set up page error listener to catch uncaught errors within the browser
+        // 捕获所有页面错误和控制台日志
         page.on('pageerror', error => {
-            console.error('❌ Browser page error (runtime JS error):', error.message);
+            const logMsg = `❌ 浏览器页面错误 (运行时 JS 错误): ${error.message}\n堆栈: ${error.stack}`;
+            logToBoth(logMsg, true);
         });
-        // Capture browser console logs
-        page.on('console', message => {
-            console.log(`Browser console ${message.type()}: ${message.text()}`);
+        page.on('console', async message => {
+            const args = await Promise.all(message.args().map(arg => arg.jsonValue()));
+            const logMsg = `浏览器控制台 [${message.type()}]: ${args.join(' ')}`;
+            logToBoth(logMsg);
             if (message.type() === 'error') {
-                console.error(`❌ Browser console error: ${message.text()}`);
+                logToBoth(`❌ 浏览器控制台错误: ${args.join(' ')}`, true);
             }
         });
+        page.on('close', () => { 
+            logToBoth('⚠️ 警告: Playwright 页面已关闭。', true);
+        });
+        // 捕获浏览器断开连接事件
+        browser.on('disconnected', () => {
+            logToBoth('💥 Playwright 浏览器连接已断开！这可能意味着浏览器崩溃。', true);
+            browserLogStream.end(); 
+        });
+        // 捕获浏览器内部的进程错误
+        browser.on('browsererror', error => { 
+            logToBoth(`🔥 Playwright 浏览器进程错误: ${error.message}`, true);
+            browserLogStream.end();
+        });
+        page.on('load', () => { 
+            logToBoth('✅ Playwright 页面 DOMContentLoaded 或 Load 事件触发。');
+        });
 
+        // --- 网络请求监听器以捕获图片加载状态 ---
+        page.on('request', request => {
+            // 仅记录 http(s) 请求，file:// 请求已不再是主要方式
+            if (request.url().startsWith('http') && (request.resourceType() === 'image' || request.url().includes('assets/'))) { 
+                logToBoth(`➡️ 请求资源: ${request.url()} (类型: ${request.resourceType()})`);
+            }
+        });
+        page.on('response', async response => {
+            const request = response.request();
+            if (request.url().startsWith('http') && (request.resourceType() === 'image' || request.url().includes('assets/'))) { 
+                const status = response.status();
+                const responseUrl = response.url(); // 使用 responseUrl 来避免与 Node.js url 模块混淆
+                if (status >= 200 && status < 300) {
+                    logToBoth(`✅ 资源加载成功: ${responseUrl} (类型: ${request.resourceType()}, 状态码: ${status})`);
+                } else {
+                    logToBoth(`❌ 资源加载失败: ${responseUrl} (类型: ${request.resourceType()}, 状态码: ${status})`, true);
+                }
+            }
+        });
+        page.on('requestfailed', request => {
+            if (request.url().startsWith('http') && (request.resourceType() === 'image' || request.url().includes('assets/'))) { 
+                logToBoth(`❌ 资源请求失败 (Request Failed): ${request.url()} 错误: ${request.failure()?.errorText || '未知错误'}`, true); 
+            }
+        });
+        // --- END NETWORK LISTENERS ---
 
-        // 1. Compile SCSS to CSS
+        logToBoth(`开始编译 SCSS...`);
+        // 1. 编译 SCSS 为 CSS
         let compiledCss = '';
         if (scssCode) {
             try {
-                // --- Key fix: Replace non-standard 'dx' units with 'px' in SCSS ---
-                let processedScss = scssCode.replace(/(\d+)\s*dx/g, '$1px'); // Correct regex for '10dx' and '10 dx'
-                
-                // --- Key fix: Replace image paths in SCSS from ../img/ to ./assets/ ---
-                // Because the HTML file is in the item_id directory, and images are in item_id/assets
+                let processedScss = scssCode.replace(/(\d+)\s*dx/g, '$1px'); 
+                // 确保 SCSS 中的图片路径也是相对的，因为它们将通过 HTTP 服务器提供
                 processedScss = processedScss.replace(/\.\.\/img\//g, './assets/'); 
 
-                const result = sass.compileString(processedScss); // <-- Ensure processedScss is used here
+                const result = sass.compileString(processedScss); 
                 compiledCss = result.css.toString();
-                console.log('SCSS compiled successfully (first 500 chars):', compiledCss.substring(0, 500));
+                logToBoth('SCSS 编译成功。');
             } catch (sassError) {
-                console.error('❌ SCSS compilation error:', sassError.message);
+                logToBoth(`❌ SCSS 编译错误: ${sassError.message}`, true);
                 compiledCss = `/* SCSS Compilation Error: ${sassError.message} */ body { background-color: #ffe0e0; padding: 20px; font-family: sans-serif; } #root::before { content: "SCSS ERROR: ${sassError.message.replace(/"/g, "'").replace(/\n/g, '\\A')}"; color: red; display: block; white-space: pre-wrap; word-wrap: break-word; }`;
             }
         }
-        // Save raw SCSS code to file
         fs.writeFileSync(path.join(outputDir, `${itemBaseName}_received_style.scss`), scssCode, 'utf8');
         fs.writeFileSync(path.join(outputDir, `${itemBaseName}_compiled_style.css`), compiledCss, 'utf8');
+        logToBoth(`SCSS 编译结果已保存。`);
+        logToBoth('--- 编译后的完整 CSS 内容开始 ---');
+        logToBoth(compiledCss);
+        logToBoth('--- 编译后的完整 CSS 内容结束 ---');
 
 
-        // 2. Compile JSX to plain JavaScript
+        logToBoth(`开始编译 JSX...`);
+        // 2. 编译 JSX 为纯 JavaScript
         let compiledJsx;
-        let componentName = 'App'; // Default to App if no other component found
+        let componentName = 'App'; 
         try {
-            // --- Key fix: Replace image paths in JSX from ../img/ to ./assets/ ---
-            // Applies to <img src="../img/..." /> and similar JSX structures
+            // 确保 JSX 中的图片路径也是相对的
             let processedJsxCode = jsxCode.replace(/\.\.\/img\//g, './assets/');
 
-            compiledJsx = Babel.transform(processedJsxCode, { // <-- Ensure processedJsxCode is used here
+            compiledJsx = Babel.transform(processedJsxCode, { 
                 plugins: [
                     ['transform-react-jsx', { pragma: 'React.createElement' }], 
                 ],
             }).code;
 
-            // --- Key fix: Ensure all possible import and export statements are removed ---
-            compiledJsx = compiledJsx.replace(/^import(?:["'].*?['"]|.*?;)?\n?/gm, ''); 
+            compiledJsx = compiledJsx.replace(/^import(?:["'].*?['']|.*?;)?\n?/gm, ''); 
             compiledJsx = compiledJsx.replace(/export (default )?.*;?\n?/g, ''); 
 
-            // --- Key fix: Find the first PascalCase function or class component and mount it to window.App ---
-            // Matches function SomeComponent() {} or class SomeComponent extends ... {}
             const componentNameMatch = compiledJsx.match(/(?:function|class)\s+([A-Z][a-zA-Z0-9]*)\s*(?:\(|extends)/);
-            
             if (componentNameMatch && componentNameMatch[1]) {
                 componentName = componentNameMatch[1];
-                console.log(`Found main component named: ${componentName}`);
+                logToBoth(`找到主组件名: ${componentName}`);
             } else {
-                // New: Try to find const SomeComponent = ... style components
                 const topLevelVarMatch = compiledJsx.match(/const\s+([A-Z][a-zA-Z0-9]*)\s*=/);
                 if (topLevelVarMatch && topLevelVarMatch[1]) {
                     componentName = topLevelVarMatch[1];
-                    console.log(`Found top-level component variable: ${componentName}`);
+                    logToBoth(`找到顶层组件变量: ${componentName}`);
                 } else {
-                    console.log('Could not reliably extract component name. Defaulting to "App".');
+                    logToBoth('未能可靠地提取组件名。默认为 "App"。', true);
                 }
             }
             
-            // Assign the found component to window.App to ensure the renderer can find it
-            // Make sure the component name is correctly referenced, not an undefined variable
-            compiledJsx += `\nwindow.App = ${componentName};`; // <-- Use the actual component name here
-            
-            // Ensure 'use strict'; is added at the beginning of compiledJsx to avoid certain strict mode issues
+            compiledJsx += `\nwindow.App = ${componentName};`; 
             compiledJsx = `'use strict';\n${compiledJsx}`;
 
-
-            console.log('--- Compiled JSX (first 1000 chars) ---');
-            console.log(compiledJsx.substring(0, 1000)); // Print more characters
-            console.log('--- End Compiled JSX ---');
+            logToBoth('JSX 编译成功。');
         } catch (babelError) {
-            console.error('❌ Babel compilation error for JSX:', babelError.message);
-            await page.setContent(`<html><body><div style="color: red; padding: 20px;">Error compiling JSX: ${babelError.message}</div></body></html>`);
+            logToBoth(`❌ Babel 编译 JSX 错误: ${babelError.message}`, true);
+            await page.setContent(`<html><body><div style="color: red; padding: 20px;">错误：编译 JSX 失败: ${babelError.message}</div></body></html>`);
             await page.screenshot({ path: outputPath });
             return;
         }
-        // Save raw JSX code to file
         fs.writeFileSync(path.join(outputDir, `${itemBaseName}_received_code.jsx`), jsxCode, 'utf8');
         fs.writeFileSync(path.join(outputDir, `${itemBaseName}_compiled_code.js`), compiledJsx, 'utf8');
+        logToBoth(`JSX 编译结果已保存。`);
 
+        logToBoth(`开始构建 HTML 内容...`);
 
-        // 3. Build the HTML page
+        // 3. 构建 HTML 页面
+        // 注意：这里的 background-image URL 将使用相对路径，因为将通过 HTTP 服务器提供
         const htmlContent = `
             <!DOCTYPE html>
             <html lang="en">
@@ -171,92 +235,200 @@ async function renderAndScreenshot() {
                 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
                 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
                 
-                <!-- Injected compiled CSS -->
-                <style>
-                    body { margin: 0; }
+                <!-- 注入编译后的 CSS -->
+                <style id="generated-style">
+                    html, body {
+                        height: 100%; /* Ensure html and body take full height */
+                        min-height: 100vh; /* Ensure full viewport height */
+                        margin: 0;
+                        padding: 0;
+                    }
+                    body { 
+                        background-image: url("./assets/bg.jpg"); /* <-- MODIFIED: Reverted to relative URL */
+                        background-size: cover;
+                        background-position: center;
+                        background-repeat: no-repeat;
+                    }
                     ${compiledCss}
                 </style>
             </head>
             <body>
                 <div id="root" style="min-height: 100vh;"></div>
                 <script type="text/javascript">
-                    // React and ReactDOM libraries are globally available via <script> tags
-                    // Compiled JSX code, including logic to force-mount to window.App
                     ${compiledJsx}
 
-                    console.log('Attempting to render component...');
+                    console.log('尝试渲染组件...');
                     try {
-                        // At this point, window.App should have been assigned the component we want to render
                         if (typeof window.App === 'function') {
-                            console.log('Found component: window.App. Attempting to render...');
+                            console.log('找到组件: window.App. 尝试渲染...');
                             ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(window.App));
-                            console.log('React component rendered successfully.');
+                            console.log('React 组件渲染成功。');
                         } else {
-                            const errorMsg = "Could not find 'window.App' React component after compilation. Check compiled_code.js.";
+                            const errorMsg = "编译后无法找到 'window.App' React 组件。请检查 compiled_code.js。";
                             console.error('❌', errorMsg);
-                            // --- FIXED: Use regular string concatenation for the innerHTML assignment ---
-                            document.getElementById('root').innerHTML = '<div style="color: red; padding: 20px;">COMPONENT NOT FOUND ERROR: ' + errorMsg + '</div>';
+                            document.getElementById('root').innerHTML = '<div style="color: red; padding: 20px;">组件未找到错误: ' + errorMsg + '</div>';
                         }
                     } catch (renderError) {
-                        console.error("❌ React render error in browser context:", renderError.message);
-                        // --- FIXED: Use regular string concatenation for the innerHTML assignment ---
-                        document.getElementById('root').innerHTML = '<div style="color: red; padding: 20px;">REACT RENDER ERROR: ' + renderError.message + '</div>';
+                        console.error("❌ 浏览器上下文中 React 渲染错误:", renderError.message);
+                        document.getElementById('root').innerHTML = '<div style="color: red; padding: 20px;">React 渲染错误: ' + renderError.message + '</div>';
                     }
                 </script>
             </body>
             </html>
         `;
+        logToBoth(`HTML 内容已构建。`);
         
-        // Save the initially constructed HTML file for debugging
-        fs.writeFileSync(path.join(outputDir, `${itemBaseName}_initial_render.html`), htmlContent, 'utf8');
+        // --- MODIFIED: 启动本地 HTTP 服务器 ---
+        const serverPort = 8080; // 您可以根据需要更改此端口
 
-        await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+        server = http.createServer((req, res) => {
+            const parsedUrl = url.parse(req.url);
+            let requestPath = parsedUrl.pathname;
+            
+            // 移除开头的斜杠，并处理可能的根目录请求
+            if (requestPath.startsWith('/')) {
+                requestPath = requestPath.substring(1);
+            }
+            
+            const filePath = path.join(outputDir, requestPath); // 从 outputDir 提供文件
+
+            logToBoth(`Server Request: ${req.url} -> 尝试提供文件: ${filePath}`);
+
+            fs.stat(filePath, (err, stats) => {
+                if (err) {
+                    logToBoth(`Server Error (stat): ${err.message} for ${filePath}`, true);
+                    res.writeHead(404, { 'Content-Type': 'text/plain' });
+                    res.end('404 Not Found');
+                    return;
+                }
+
+                if (stats.isDirectory()) {
+                    // 如果是目录，尝试提供 index.html
+                    const indexFilePath = path.join(filePath, 'index.html');
+                    fs.access(indexFilePath, fs.constants.F_OK, (err) => {
+                        if (err) {
+                            logToBoth(`Server Error (access index.html): ${err.message} for ${indexFilePath}`, true);
+                            res.writeHead(403, { 'Content-Type': 'text/plain' });
+                            res.end('403 Forbidden');
+                        } else {
+                            serveStaticFile(indexFilePath, res, logToBoth);
+                        }
+                    });
+                } else {
+                    serveStaticFile(filePath, res, logToBoth);
+                }
+            });
+        });
+
+        await new Promise((resolve, reject) => {
+            server.listen(serverPort, (err) => {
+                if (err) {
+                    logToBoth(`❌ 本地 HTTP 服务器启动失败: ${err.message}`, true);
+                    return reject(err);
+                }
+                logToBoth(`✅ 本地 HTTP 服务器已在 http://localhost:${serverPort} 启动`);
+                resolve();
+            });
+        });
+        // --- 结束启动本地 HTTP 服务器 ---
+
+        // 将 HTML 内容写入临时文件，供服务器提供
+        const tempHtmlFileName = `${itemBaseName}_served_page.html`;
+        const tempHtmlFilePath = path.join(outputDir, tempHtmlFileName);
+        fs.writeFileSync(tempHtmlFilePath, htmlContent, 'utf8');
+        logToBoth(`临时 HTML 文件已保存到 ${tempHtmlFilePath}`);
+
+        // 现在让 Playwright 导航到 HTTP URL
+        const pageUrl = `http://localhost:${serverPort}/${tempHtmlFileName}`;
+        await page.goto(pageUrl, { waitUntil: 'networkidle' });
+        logToBoth(`✅ Playwright 已导航到 ${pageUrl}`);
         
-        // Add a delay of 2 seconds to ensure the page is fully rendered, including asynchronously loaded content
-        await new Promise(resolve => setTimeout(resolve, 2000)); 
+        logToBoth('检查 body 元素的 background-image 样式...');
+        const backgroundImage = await page.evaluate(() => {
+            const body = document.querySelector('body');
+            if (body) {
+                const computedStyle = window.getComputedStyle(body);
+                return computedStyle.getPropertyValue('background-image');
+            }
+            return 'body element not found or no background-image.';
+        });
+        logToBoth(`<body> 元素的 background-image 计算样式: ${backgroundImage}`);
 
-        // Get the page's inner HTML (final rendered DOM structure)
+        logToBoth('检查 HTML 中 <style> 标签的实际内容...');
+        const styleTagContent = await page.evaluate(() => {
+            const styleTag = document.getElementById('generated-style'); 
+            return styleTag ? styleTag.textContent : 'Style tag with ID "generated-style" not found.';
+        });
+        logToBoth('--- <style> 标签内容开始 ---');
+        logToBoth(styleTagContent);
+        logToBoth('--- <style> 标签内容结束 ---');
+
+        logToBoth('为图片加载后的渲染额外添加 3 秒延迟...'); 
+        await page.waitForTimeout(3000); 
+        logToBoth('额外延迟结束。');
+
+        logToBoth('开始获取页面最终渲染的 DOM...');
         const pageContent = await page.content();
-        console.log('--- Page Rendered HTML (full content saved to file) ---');
-        // Print the first 2000 characters to the console for a rough idea of the structure
-        console.log(pageContent.substring(0, 2000)); 
-        console.log('--- End Page Rendered HTML ---');
-
-        // Save the final rendered DOM structure to a file
         fs.writeFileSync(path.join(outputDir, `${itemBaseName}_final_rendered_dom.html`), pageContent, 'utf8');
+        logToBoth('页面渲染 HTML 已保存。');
 
-        // Check if #root element contains content (for debugging)
         const rootContent = await page.evaluate(() => document.getElementById('root') ? document.getElementById('root').innerHTML : 'N/A');
-        console.log('--- Content of #root element (full content saved to file) ---');
-        // Print the first 2000 characters to the console
-        console.log(rootContent.substring(0, 2000));
-        console.log('--- End Content of #root ---');
-
-        // Save the inner HTML of the #root element to a file
         fs.writeFileSync(path.join(outputDir, `${itemBaseName}_root_inner_html.html`), rootContent, 'utf8');
+        logToBoth('#root 元素内容已保存。');
 
-
+        logToBoth('开始截图...');
         await page.screenshot({ path: outputPath, fullPage: true });
-        console.log(`Screenshot saved to ${outputPath}`);
+        logToBoth(`✅ 截图已保存到 ${outputPath}`);
+
+        // --- 保持浏览器打开更长时间，以便手动调试 ---
+        logToBoth(`\n✅ Playwright 浏览器已启动并渲染页面。`);
+        logToBoth(`请手动检查浏览器窗口并打开开发者工具 (F12) 进行调试。`);
+        logToBoth(`**浏览器将在 2 分钟后自动关闭。在此之前请手动关闭此 Chrome 窗口以完成脚本。**`);
+        await page.waitForTimeout(120000); // 保持浏览器打开 2 分钟
 
     } catch (error) {
-        console.error('❌ Puppeteer or general rendering error (outside browser context):', error);
-        if (browser) await browser.close();
-        // Try to save a screenshot with the error
-        try {
-            const tempBrowser = await puppeteer.launch({headless: true}); // Try launching without specifying path to see if any browser starts
-            const tempPage = await tempBrowser.newPage();
-            await tempPage.setContent(`<div style="color: red; padding: 20px;">GLOBAL ERROR: ${error.message}<br>Stack: ${error.stack}</div>`); // Print stack trace
-            await tempPage.screenshot({path: outputPath});
-            await tempBrowser.close();
-        } catch (screenshotError) {
-            console.error('❌ Failed to save error screenshot:', screenshotError);
+        const errorMsg = `❌ Playwright 或通用渲染错误 (浏览器上下文之外): ${error.message}\n堆栈: ${error.stack}`;
+        logToBoth(errorMsg, true);
+
+        if (browser && !browser.isClosed()) { 
+            try {
+                const pageText = await browser.pages()[0]?.evaluate(() => document.body.innerText); 
+                if (pageText) {
+                    logToBoth(`浏览器端捕获到页面文本 (崩溃前尝试): \n${pageText.substring(0, 500)}...`, true);
+                }
+            } catch (innerError) {
+                logToBoth(`❌ 尝试获取浏览器崩溃前内容时出错: ${innerError.message}`, true);
+            }
+            await browser.close(); 
+        } else if (browser) { 
+             logToBoth('浏览器已断开连接或已关闭，无法在错误中操作页面。', true);
+        } else { 
+            logToBoth('浏览器未能启动。', true);
         }
-        fs.writeFileSync(path.join(outputDir, `${itemBaseName}_error_log.txt`), `Error: ${error.message}\nStack: ${error.stack}`, 'utf8');
+        
+        try {
+            const tempBrowser = await chromium.launch({ headless: true });
+            const tempPage = await tempBrowser.newPage();
+            await tempPage.setContent(`<div style="color: red; padding: 20px;">全局错误: ${error.message}<br>堆栈: ${error.stack}</div>`);
+            await tempPage.screenshot({ path: outputPath });
+            await tempBrowser.close();
+            logToBoth(`错误截图已保存到 ${outputPath}`);
+        } catch (screenshotError) {
+            logToBoth(`❌ 无法保存错误截图: ${screenshotError.message}`, true);
+        }
     } finally {
-        if (browser) {
+        if (browser && !browser.isClosed()) { 
             await browser.close();
         }
+        if (server) { // 确保服务器在 finally 块中被关闭
+            logToBoth('关闭本地 HTTP 服务器...');
+            await new Promise(resolve => server.close(() => {
+                logToBoth('✅ 本地 HTTP 服务器已关闭。');
+                resolve();
+            }));
+        }
+        browserLogStream.end(); 
+        logToBoth(`脚本执行结束。`); 
     }
 }
 

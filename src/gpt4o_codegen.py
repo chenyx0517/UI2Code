@@ -12,6 +12,7 @@ from skimage.metrics import structural_similarity as ssim # 新增：用于 SSIM
 import numpy as np # 新增：用于图像处理
 import difflib # 新增：用于代码相似度计算
 import re
+import cv2 # 新增：用于读取图片尺寸
 load_dotenv()
 
 # --- Prompt 文件路径和加载函数 (这部分保持不变) ---
@@ -174,31 +175,34 @@ def calculate_code_similarity(code1: str, code2: str) -> float:
     s = difflib.SequenceMatcher(None, lines1, lines2)
     return s.ratio() # 返回相似度分数 (0.0 到 1.0)
 
-# --- 新增辅助函数：获取页面资产列表 ---
 def get_image_assets_list(screenshot_path: str) -> str:
     """
-    根据截图路径，获取其同级目录下的 'assets/' 文件夹中的图片文件名列表。
-    例如：如果截图是 'data/processed/ui2code_dataset/item_00001/screenshot.png'
-    则会查找 'data/processed/ui2code_dataset/item_00001/assets/' 中的图片。
+    根据截图路径，获取其同级目录下的 'assets/' 文件夹中的图片文件名列表，并包含尺寸信息。
     """
-    # 获取页面实例的根目录 (例如 item_00001)
     page_instance_dir = os.path.dirname(screenshot_path)
     assets_dir = os.path.join(page_instance_dir, 'assets')
 
     if not os.path.isdir(assets_dir):
-        return "无。" # 如果没有 assets 目录，返回“无”
+        return "无图片资产。"
 
-    image_files = []
+    image_details = []
     for filename in os.listdir(assets_dir):
-        # 仅添加常见的图片格式
         if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.svg')):
-            image_files.append(filename)
+            image_full_path = os.path.join(assets_dir, filename)
+            try:
+                img = cv2.imread(image_full_path)
+                if img is not None:
+                    height, width, _ = img.shape
+                    image_details.append(f"- {filename} (Width: {width}px, Height: {height}px)")
+                else:
+                    image_details.append(f"- {filename} (无法读取尺寸，可能文件损坏或非图像格式)")
+            except Exception as e:
+                image_details.append(f"- {filename} (读取尺寸时出错: {e})")
 
-    if not image_files:
-        return "无。"
+    if not image_details:
+        return "无图片资产。"
     
-    # 格式化为列表字符串，例如："- logo.png\n- icon_user.png"
-    return "\n".join([f"- {f}" for f in sorted(image_files)])
+    return "\n".join(sorted(image_details)) # Sort for consistent output
 
 # --- 保存结果的函数 (参数已更新以接受 JSX 和 SCSS 分别传入) ---
 def save_generated_result(
@@ -426,7 +430,9 @@ if __name__ == "__main__":
         if not os.path.exists(item_screenshot_path):
             print(f"⚠️ 警告：跳过 {item_dir_name}，因为未找到 'screenshot.png'。")
             continue
-        
+
+        shutil.copytree(os.path.join(DATASET_ROOT_DIR, item_dir_name, 'assets'),os.path.join(RESULTS_BASE_DIR, item_dir_name,'assets') )
+            
         # 调用核心生成和评估函数
         result = generate_code_from_screenshot(item_screenshot_path, output_base_dir=RESULTS_BASE_DIR)
         all_item_results.append(result)
