@@ -1,0 +1,53 @@
+@import "@/styles/global.mixin";
+
+.home-container {
+	background: url("./img/bg.jpg")
+		no-repeat top / cover;
+
+	.home-content {
+		position: absolute;
+		left: 50%;
+		transform: translateX(-50%);
+		bottom: -50dx;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		height: 650dx; // 定死高度
+
+		// border: 1px solid green;
+
+		.lottie-slogan {
+			width: 780dx;
+			height: 496dx;
+			position: relative;
+			pointer-events: none;
+		}
+
+		.rule-icon {
+			position: absolute;
+			right: 100dx;
+			top: 170dx;
+		}
+
+		.time-left {
+			position: absolute;
+			left: 50%;
+			transform: translateX(-50%);
+			bottom: 280dx;
+		}
+
+		.lottie-play-btn {
+			width: 394dx;
+			position: relative;
+			top: -40dx;
+			opacity: 0;
+			transition: opacity 0.3s;
+
+			&.show {
+				opacity: 1;
+			}
+		}
+	}
+}
+
+@import "./other";

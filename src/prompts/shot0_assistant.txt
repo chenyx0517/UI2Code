@@ -1,0 +1,213 @@
+请让我一步步思考
+步骤1：这个页面宽度是100vw，高度时100vh，有一张背景图为bg.jpg需要以cover的方式填充
+步骤2:header分为左右两个部分，左侧有两个按钮，右侧有一个，需要按照flex布局设置，每个icon都要按照提供的尺寸展示
+步骤3:底部有两个按钮，有一些间距，需要按照提供的尺寸进行展示
+
+**生成代码：**
+```jsx
+// index.jsx
+import {
+	useState,
+	useEffect,
+	useRef
+} from "react"
+import { useStore } from "@store"
+import {
+	getUrlParam,
+	env,
+	gameDownloadMobile,
+	copy
+} from "@diezhi/momo"
+import { Toast } from "@diezhi/yesio"
+import BgmPlayer from "../../components/BgmPlayer"
+import Login from "../../components/Login"
+import useAccount from "../../hooks/useAccount"
+import useService from "../../hooks/useService"
+import {
+	errorHandler,
+	updateCommonTds
+} from "../../service"
+import {
+	loginResutLog,
+	pageViewLog,
+	openByInviteLinkLog
+} from "../../log"
+import {
+	codeKey,
+	downloadUrlBilibili,
+	clientId,
+	Animation
+} from "../../constant"
+import showModal from "../../components/Modal"
+import Logo from "../../assets/icon/logo.png"
+
+import "./index.scss"
+
+const Home = () => {
+	return (
+		<div className="home">
+
+			<div className="mask" />
+			<div className="homeHeader">
+				<div className="headerLeft">
+					<div
+						className="icon-rule"
+					/>
+					<div>
+						{isLogin() ? (
+							<div className="logout-icon" />
+						) : (
+							<div className="login-icon" />
+						)}
+					</div>
+					<div
+						className="icon-award"
+						onClick={() =>
+							showModal({
+								type: "awardList"
+							})
+						}
+					/>
+				</div>
+				<div className="headerRight">
+					<div className="homeHeaderItem">
+						<BgmPlayer
+							className="home-music-btn"
+							play={play}
+							playing={playing}
+							pause={pause}
+						/>
+					</div>
+				</div>
+			</div>
+			<div className="logo"/>
+			<div className="homeTitle" />
+			<div className="homeBtn">
+				<div
+					className="homeBtnTask"
+					onClick={() => goto("task")}
+				/>
+				<div
+					className="homeBtnLottery"
+					onClick={() =>
+						goto("lottery")
+					}
+				/>
+			</div>
+		</div>
+	)
+}
+
+export default Home
+
+// scss
+@import "@/styles/global.mixin";
+
+.home {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background: url("./img/bg.jpg")
+		center / cover no-repeat;
+
+	.mask {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		height: 2000dx;
+		background: url("./img/mask.png")
+			0 0 / 100% auto no-repeat;
+		pointer-events: none;
+	}
+
+    .logo{
+        position:absolute;
+        top:40dx;
+        left:50%;
+        transform:translateX(-50%)
+    }
+
+	.homeHeader {
+		position: absolute;
+		top: 24dx;
+		left: 34dx;
+		right: 34dx;
+		display: flex;
+		justify-content: space-between;
+
+		.login-icon {
+			@include bg(
+				"../../assets/icon/login.png",
+				41dx,
+				40dx
+			);
+		}
+
+		.logout-icon {
+			@include bg(
+				"../../assets/icon/logout.png",
+				41dx,
+				42dx
+			);
+		}
+	}
+
+	.homeLogo {
+		position: absolute;
+		width: 375dx;
+		height: 255dx;
+		top: 0;
+		left: 50%;
+		transform: translateX(-50%);
+	}
+
+	.homeTitle {
+		position: absolute;
+		top: 169dx;
+		left: 50%;
+		transform: translateX(-50%);
+
+		@include bg(
+			"./img/title.png",
+			626dx,
+			324dx
+		);
+	}
+
+	.homeBtn {
+		position: absolute;
+		bottom: 30dx;
+		left: 61dx;
+		right: 71dx;
+		display: flex;
+		gap: 62dx;
+		justify-content: space-between;
+
+		.homeBtnTask {
+			@include bg(
+				"../../assets/home/task.png",
+				275dx,
+				343dx
+			);
+		}
+
+		.homeBtnLottery {
+			@include bg(
+				"../../assets/home/lottery.png",
+				275dx,
+				343dx
+			);
+		}
+	}
+
+	.headerLeft,
+	.headerRight {
+		display: flex;
+		gap: 37dx;
+		align-items: center;
+	}
+}
+

@@ -19,6 +19,8 @@ load_dotenv()
 current_script_dir = os.path.dirname(os.path.abspath(__file__))
 SYSTEM_PROMPT_FILE = os.path.join(current_script_dir, 'prompts', 'ui2code_system_prompt.txt')
 USER_PROMPT_TEMPLATE_FILE = os.path.join(current_script_dir, 'prompts', 'ui2code_user_template.txt')
+SHOT0_USER_PROMPT_TEMPLATE_FILE = os.path.join(current_script_dir, 'prompts', 'shot0_user.txt')
+SHOT0_ASSISTANT_PROMPT_TEMPLATE_FILE = os.path.join(current_script_dir, 'prompts', 'shot0_assistant.txt')
 
 def load_prompt_from_file(filepath: str) -> str:
     try:
@@ -33,6 +35,8 @@ def load_prompt_from_file(filepath: str) -> str:
 
 SYSTEM_PROMPT = load_prompt_from_file(SYSTEM_PROMPT_FILE)
 USER_PROMPT_TEMPLATE = load_prompt_from_file(USER_PROMPT_TEMPLATE_FILE)
+SHOT0_USER_PROMPT_TEMPLATE = load_prompt_from_file(SHOT0_USER_PROMPT_TEMPLATE_FILE)
+SHOT0_ASSISTANT_PROMPT_TEMPLATE = load_prompt_from_file(SHOT0_ASSISTANT_PROMPT_TEMPLATE_FILE)
 
 if not SYSTEM_PROMPT or not USER_PROMPT_TEMPLATE:
     print("❌ 错误：系统或用户 Prompt 内容为空。请检查文件是否正确加载。")
@@ -301,6 +305,8 @@ def generate_code_from_screenshot(screenshot_path: str, output_base_dir: str, mo
         response = client.chat.completions.create(
             model=model,
             messages=[
+                # {"role": "user", "content": SHOT0_USER_PROMPT_TEMPLATE},
+                # {"role": "assistant", "content": SHOT0_ASSISTANT_PROMPT_TEMPLATE},
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {
                     "role": "user",

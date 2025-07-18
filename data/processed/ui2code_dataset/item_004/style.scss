@@ -1,0 +1,121 @@
+@import "@/styles/global.mixin";
+
+.lottery {
+	padding-top: 1dx;
+
+	@include bg(
+		"./img/bg.jpg",
+		100vw,
+		100vh,
+		cover
+	);
+
+	position: relative;
+
+	.lotteryHeader {
+		position: fixed;
+		left: 0;
+		right: 0;
+		top: 24dx;
+		display: flex;
+		justify-content: space-between;
+		z-index: 2;
+
+		.icon-back {
+			width: 49dx;
+			height: 39dx;
+			margin-left: 30dx;
+		}
+
+		.lotteryHeaderRight {
+			display: flex;
+
+			.lottery-music-btn {
+				margin-right: 40dx;
+			}
+
+			.lottery-icon-award {
+				width: 43dx;
+				height: 42dx;
+				margin-right: 37dx;
+			}
+		}
+	}
+
+	.lotteryInfo {
+		margin-top: 100dx;
+
+		@include flex-center;
+
+		flex-direction: column;
+
+		.lotteryInfoTitle {
+			width: 253dx;
+			height: 25dx;
+		}
+
+		.lotteryInfoCount {
+			width: 297dx;
+			height: 69dx;
+			position: relative;
+			margin-top: 10dx;
+
+			@include flex-center;
+
+			color: #ffea96;
+			font-weight: 600;
+			font-family: FZYASHS;
+			z-index: 2;
+
+			img {
+				position: absolute;
+				width: 100%;
+				height: 100%;
+				z-index: -1;
+			}
+		}
+	}
+
+	.lotteryFireBtn {
+		position: absolute;
+		left: 50%;
+		transform: translateX(-54%);
+		top: 65%;
+		z-index: 3;
+	}
+
+	.lotteryMain {
+		margin-top: 100dx;
+
+		.fireTip {
+			margin-top: 40dx;
+			text-align: center;
+		}
+	}
+
+	.taskBtn {
+		width: 135dx;
+		height: 340dx;
+		position: absolute;
+		right: 65dx;
+		top: 165dx;
+		z-index: 3;
+	}
+
+	.lottery-tip {
+		width: 506dx;
+		height: 25dx;
+		position: absolute;
+		left: 50%;
+		transform: translateX(-50%);
+		top: 92%;
+	}
+
+	.lottery-spine {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 680dx;
+		z-index: 1;
+	}
+}
